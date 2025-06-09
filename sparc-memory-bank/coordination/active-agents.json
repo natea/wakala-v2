@@ -1,0 +1,15 @@
+{
+  "activeAgents": [
+    {
+      "id": "claude-opus-4-sparc",
+      "session": "2025-01-09-01-45",
+      "currentTask": "SPARC Phase 0 - Comprehensive Research & Discovery",
+      "sparcPhase": "research",
+      "status": "active",
+      "lastHeartbeat": "2025-01-09T01:45:00Z",
+      "workingFiles": [],
+      "blockedBy": [],
+      "blocking": []
+    }
+  ]
+}
