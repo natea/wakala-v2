@@ -1,0 +1,100 @@
+{
+  "name": "Wakala v2 Development Environment",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true,
+      "username": "vscode",
+      "userUid": "automatic",
+      "userGid": "automatic"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "ppa": true,
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeGypDependencies": true,
+      "version": "lts",
+      "nvmVersion": "latest"
+    }
+  },
+
+  // Use 'forwardPorts' to make a list of ports inside the container available locally.
+  "forwardPorts": [3000, 5173, 8000, 8080],
+
+  // Port attributes for better DevPod integration
+  "portsAttributes": {
+    "3000": {
+      "label": "Application Server",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Vite Dev Server",
+      "onAutoForward": "openPreview"
+    },
+    "8000": {
+      "label": "Development Server",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "Web Server",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  "postCreateCommand": "npm install && echo 'Welcome to Wakala v2 Development Environment!'",
+
+  // Container environment variables for DevPod integration
+  "containerEnv": {
+    "DEVPOD_WORKSPACE": "${localEnv:DEVPOD_WORKSPACE}",
+    "DEVPOD_MACHINE": "${localEnv:DEVPOD_MACHINE}",
+    "NODE_ENV": "development"
+  },
+
+  // Configure tool-specific properties.
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-json",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        "ms-vscode.vscode-typescript-next",
+        "rooveterinaryinc.roo-cline",
+        "anthropic.claude-code",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-eslint"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "typescript.preferences.includePackageJsonAutoImports": "on"
+      }
+    },
+    "devpod": {
+      "prebuildRepository": "https://github.com/your-org/wakala-v2-prebuilds",
+      "ide": "vscode"
+    }
+  },
+
+  // Mount devcontainer scripts for DevPod compatibility
+  "mounts": [
+    "source=${localWorkspaceFolder}/.devcontainer,target=/workspace/.devcontainer,type=bind,consistency=cached"
+  ],
+
+  // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+  "remoteUser": "vscode",
+  
+  // Set container user to avoid permission issues
+  "containerUser": "vscode",
+  "updateRemoteUserUID": true
+}
