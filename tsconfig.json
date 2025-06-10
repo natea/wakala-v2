@@ -1,0 +1,65 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowJs": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+    "exactOptionalPropertyTypes": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["backend/shared/*"],
+      "@services/*": ["backend/services/*"]
+    }
+  },
+  "include": [
+    "backend/**/*",
+    "frontend/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage"
+  ],
+  "references": [
+    { "path": "./backend/services/api-gateway" },
+    { "path": "./backend/services/whatsapp-service" },
+    { "path": "./backend/services/orchestration-engine" },
+    { "path": "./backend/services/multi-tenant-service" },
+    { "path": "./backend/services/order-service" },
+    { "path": "./backend/services/payment-service" },
+    { "path": "./backend/services/delivery-service" },
+    { "path": "./backend/services/analytics-service" },
+    { "path": "./backend/shared/utils" },
+    { "path": "./backend/shared/types" },
+    { "path": "./backend/shared/config" }
+  ]
+}
