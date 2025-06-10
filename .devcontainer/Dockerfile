@@ -1,5 +1,5 @@
-# Use the official Ubuntu base image
-FROM ubuntu:22.04
+# Use a smaller Node.js base image instead of Ubuntu
+FROM node:18-slim
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
@@ -12,7 +12,7 @@ RUN groupadd --gid 1000 vscode \
     && echo vscode ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode
 
-# Install essential packages
+# Install essential packages in a single layer to reduce image size
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
@@ -27,11 +27,9 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     software-properties-common \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js (LTS)
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - \
-    && apt-get install -y nodejs
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
 # Set the default user
 USER vscode

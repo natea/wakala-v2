@@ -61,7 +61,12 @@
     },
     "devpod": {
       "prebuildRepository": "https://github.com/your-org/wakala-v2-prebuilds",
-      "ide": "vscode"
+      "ide": "vscode",
+      "resources": {
+        "disk": "20Gi",
+        "memory": "4Gi",
+        "cpu": "2"
+      }
     }
   },
 

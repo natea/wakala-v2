@@ -4,6 +4,77 @@
 
 This document compiles comprehensive research findings across domain knowledge, technology stack, and implementation patterns for the Wakala project. These insights will guide our development approach for building a multi-tenant, conversational AI e-commerce platform for South African township entrepreneurs.
 
+## Latest Research Updates (January 2025)
+
+### WhatsApp Business API Integration (2024-2025)
+- **Free Service Conversations**: Starting November 1, 2024, unlimited free service conversations within 24-hour window
+- **Free Utility Templates**: Available April 1, 2025 for shipping updates and payment confirmations
+- **Authentication Features**: Enhanced OTP capabilities with multiple sends in 24-hour window
+- **Pricing Changes**: New per-message pricing model effective July 2025
+- **Rich Media Support**: Enhanced multimedia messaging with images, videos, and interactive messages
+- **Green Tick Verification**: Critical for business authenticity and trust building
+
+### Township E-commerce & Digital Inclusion
+- **Market Size**: Townships represent 40% of South Africa's grocery market (~R200 billion annually)
+- **E-commerce Penetration**: Only 2% of total retail spend vs 16% global average
+- **Growth Rate**: Expected CAGR of 12% through 2025
+- **Infrastructure Challenges**: World's highest data costs, poor delivery infrastructure
+- **Success Stories**: SUKHIBA platform shows 50% revenue increase via WhatsApp
+- **UK-SA Programme**: Onboarding 200 SMMEs from major townships onto e-commerce platforms
+- **Youth Engagement**: 30 million potential online shoppers by 2024
+
+### Conversational Commerce in Emerging Markets
+- **Market Projection**: Growing from $8.8B (2025) to $32.7B (2035) at 14.8% CAGR
+- **Mobile Penetration**: Mexico example - 112M smartphones for 125M population
+- **Key Drivers**: Cheaper data, widespread WhatsApp adoption, e-commerce growth
+- **SME Opportunity**: Substantial growth expected for small/medium enterprises
+- **Asia-Pacific Leadership**: India, China driving rapid adoption with AI-powered solutions
+- **Platform Dominance**: WhatsApp, Facebook Messenger central to strategy
+
+### Multi-Tenant Architecture Patterns (2024)
+- **Database Patterns**: 
+  - Shared Database/Schema (simple, cost-effective)
+  - Separate Schemas (better isolation)
+  - Separate Databases (maximum security)
+  - Hybrid approaches gaining popularity
+- **Cloud-Native Trends**:
+  - Containerization with Docker/Kubernetes
+  - Serverless architectures (AWS Lambda)
+  - Microservices for enhanced security isolation
+- **Deployment Models**:
+  - Pooled (shared resources)
+  - Siloed (dedicated resources)
+  - Mixed/Hybrid (optimized per service)
+
+### Tenant Isolation Strategies
+- **Silo Model**: Complete isolation with dedicated resources per tenant
+- **Pool Model**: Shared resources with tenant identifiers
+- **Bridge Model**: Hybrid with selective resource sharing
+- **Security Focus**: 
+  - Row-Level Security (RLS) in PostgreSQL
+  - Azure Managed Identity & RBAC
+  - Strict authentication/authorization separation
+- **Performance**: Address "noisy neighbor" problem through resource allocation
+
+### Orchestration Engine Patterns
+- **Central Coordinator Pattern**: Single authority managing distributed components
+- **Workflow Pattern**: Stateful, long-lived processes with error handling
+- **Saga Orchestration**: Maintains data integrity across distributed transactions
+- **Pipeline Pattern**: Complex data flow control with pipes & filters
+- **Resilience Patterns**:
+  - Retry mechanisms with configurable policies
+  - Circuit breaker for service isolation
+  - State management for long-running workflows
+
+### WhatsApp Multi-Tenant Chatbot Challenges
+- **Phone Number Limitations**: Initially 2 numbers, expandable with business verification
+- **Webhook Routing**: Single webhook URL requires central routing mechanism
+- **Architecture Solutions**:
+  - Pub/Sub with Redis queues for message distribution
+  - Container-based isolation with Kubernetes namespaces
+  - Istio service mesh for traffic management
+- **Commercial Platforms**: AiSensy, Wati offer built-in multi-tenant support
+
 ## 1. Domain Research Findings
 
 ### 1.1 WhatsApp Business API (2025) Best Practices
