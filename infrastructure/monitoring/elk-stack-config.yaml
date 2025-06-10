@@ -1,0 +1,364 @@
+# Elasticsearch Configuration
+elasticsearch:
+  cluster.name: wakala-production
+  node.name: ${HOSTNAME}
+  network.host: 0.0.0.0
+  discovery.seed_hosts: ["elasticsearch-master-0", "elasticsearch-master-1", "elasticsearch-master-2"]
+  cluster.initial_master_nodes: ["elasticsearch-master-0", "elasticsearch-master-1", "elasticsearch-master-2"]
+  
+  # Security
+  xpack.security.enabled: true
+  xpack.security.transport.ssl.enabled: true
+  xpack.security.transport.ssl.verification_mode: certificate
+  xpack.security.transport.ssl.keystore.path: /usr/share/elasticsearch/config/elastic-certificates.p12
+  xpack.security.transport.ssl.truststore.path: /usr/share/elasticsearch/config/elastic-certificates.p12
+  
+  # Index lifecycle management
+  indices.lifecycle.history_index_enabled: true
+  indices.lifecycle.poll_interval: 10m
+  
+  # Performance tuning
+  indices.memory.index_buffer_size: 30%
+  indices.queries.cache.size: 15%
+  thread_pool.write.queue_size: 1000
+  
+  # Snapshots
+  path.repo: ["/backup"]
+
+---
+# Logstash Configuration
+logstash:
+  pipeline.id: wakala-logs
+  pipeline.workers: 4
+  pipeline.batch.size: 125
+  pipeline.batch.delay: 50
+  
+  config: |
+    input {
+      # Application logs from Kubernetes
+      beats {
+        port => 5044
+        ssl => true
+        ssl_certificate_authorities => ["/etc/pki/tls/certs/ca.crt"]
+        ssl_certificate => "/etc/pki/tls/certs/server.crt"
+        ssl_key => "/etc/pki/tls/private/server.key"
+        ssl_verify_mode => "force_peer"
+      }
+      
+      # Application metrics
+      tcp {
+        port => 5000
+        codec => json_lines
+      }
+      
+      # Audit logs
+      syslog {
+        port => 5514
+        type => "audit"
+      }
+    }
+    
+    filter {
+      # Parse Kubernetes metadata
+      if [kubernetes] {
+        mutate {
+          add_field => {
+            "service" => "%{[kubernetes][labels][app.kubernetes.io/component]}"
+            "namespace" => "%{[kubernetes][namespace]}"
+            "pod" => "%{[kubernetes][pod][name]}"
+          }
+        }
+      }
+      
+      # Parse JSON logs
+      if [message] =~ /^\{.*\}$/ {
+        json {
+          source => "message"
+          target => "app"
+        }
+        
+        mutate {
+          remove_field => ["message"]
+        }
+      }
+      
+      # Extract transaction data
+      if [app][transaction_id] {
+        mutate {
+          add_field => {
+            "transaction_id" => "%{[app][transaction_id]}"
+            "user_id" => "%{[app][user_id]}"
+            "amount" => "%{[app][amount]}"
+          }
+        }
+        
+        # Add transaction status
+        if [app][status] {
+          mutate {
+            add_field => { "transaction_status" => "%{[app][status]}" }
+          }
+        }
+      }
+      
+      # Extract error information
+      if [app][level] == "ERROR" or [app][level] == "FATAL" {
+        mutate {
+          add_field => {
+            "error_message" => "%{[app][error][message]}"
+            "error_stack" => "%{[app][error][stack_trace]}"
+            "error_code" => "%{[app][error][code]}"
+          }
+        }
+      }
+      
+      # Anonymize sensitive data
+      if [app][phone_number] {
+        mutate {
+          gsub => [
+            "app.phone_number", "(.{3})(.*)(.{2})", "\1****\3"
+          ]
+        }
+      }
+      
+      # Add geo-location data
+      if [app][ip_address] {
+        geoip {
+          source => "app.ip_address"
+          target => "geo"
+        }
+      }
+      
+      # Calculate response time
+      if [app][request_start] and [app][request_end] {
+        ruby {
+          code => "
+            start_time = event.get('[app][request_start]')
+            end_time = event.get('[app][request_end]')
+            if start_time and end_time
+              duration = end_time.to_f - start_time.to_f
+              event.set('response_time_ms', duration * 1000)
+            end
+          "
+        }
+      }
+      
+      # Add business metrics
+      if [app][event_type] == "transaction_completed" {
+        metrics {
+          meter => "transactions"
+          add_tag => "metric"
+          flush_interval => 60
+          rates => [1, 5, 15]
+        }
+      }
+    }
+    
+    output {
+      # Main application logs
+      if ![metric] {
+        elasticsearch {
+          hosts => ["elasticsearch:9200"]
+          index => "wakala-%{service}-%{+YYYY.MM.dd}"
+          template_name => "wakala"
+          template => "/etc/logstash/templates/wakala.json"
+          template_overwrite => true
+          user => "elastic"
+          password => "${ELASTIC_PASSWORD}"
+          ssl => true
+          cacert => "/etc/pki/tls/certs/ca.crt"
+        }
+      }
+      
+      # Metrics to separate index
+      if [metric] {
+        elasticsearch {
+          hosts => ["elasticsearch:9200"]
+          index => "wakala-metrics-%{+YYYY.MM.dd}"
+          user => "elastic"
+          password => "${ELASTIC_PASSWORD}"
+          ssl => true
+          cacert => "/etc/pki/tls/certs/ca.crt"
+        }
+      }
+      
+      # Critical errors to monitoring
+      if [app][level] == "ERROR" or [app][level] == "FATAL" {
+        http {
+          url => "http://alertmanager:9093/api/v1/alerts"
+          http_method => "post"
+          format => "json"
+          mapping => {
+            "labels" => {
+              "alertname" => "ApplicationError"
+              "service" => "%{service}"
+              "severity" => "warning"
+            }
+            "annotations" => {
+              "summary" => "%{error_message}"
+              "description" => "Error in %{service}: %{error_message}"
+            }
+          }
+        }
+      }
+      
+      # Audit logs to compliance storage
+      if [type] == "audit" {
+        s3 {
+          region => "us-east-1"
+          bucket => "wakala-audit-logs"
+          prefix => "logs/%{+YYYY}/%{+MM}/%{+dd}/"
+          time_file => 300
+          codec => "json_lines"
+        }
+      }
+    }
+
+---
+# Kibana Configuration
+kibana:
+  server.name: wakala-kibana
+  server.host: "0.0.0.0"
+  elasticsearch.hosts: ["https://elasticsearch:9200"]
+  elasticsearch.username: "kibana_system"
+  elasticsearch.password: "${KIBANA_PASSWORD}"
+  elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/config/ca.crt"]
+  elasticsearch.ssl.verificationMode: certificate
+  
+  # Security
+  xpack.security.enabled: true
+  xpack.encryptedSavedObjects.encryptionKey: "${ENCRYPTION_KEY}"
+  xpack.reporting.encryptionKey: "${REPORTING_KEY}"
+  xpack.security.encryptionKey: "${SECURITY_KEY}"
+  
+  # Features
+  xpack.reporting.enabled: true
+  xpack.monitoring.enabled: true
+  xpack.graph.enabled: false
+  xpack.ml.enabled: false
+  
+  # Saved objects
+  savedObjects.maxImportPayloadBytes: 10485760
+  
+  # Custom branding
+  server.customResponseHeaders:
+    X-Frame-Options: "DENY"
+    X-Content-Type-Options: "nosniff"
+    X-XSS-Protection: "1; mode=block"
+
+---
+# Index Templates
+index_templates:
+  wakala:
+    index_patterns: ["wakala-*"]
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 2
+      refresh_interval: "5s"
+      codec: best_compression
+    mappings:
+      properties:
+        "@timestamp":
+          type: date
+        service:
+          type: keyword
+        namespace:
+          type: keyword
+        pod:
+          type: keyword
+        transaction_id:
+          type: keyword
+        user_id:
+          type: keyword
+        amount:
+          type: float
+        transaction_status:
+          type: keyword
+        response_time_ms:
+          type: float
+        error_code:
+          type: keyword
+        error_message:
+          type: text
+          fields:
+            keyword:
+              type: keyword
+        geo:
+          properties:
+            location:
+              type: geo_point
+            country_code:
+              type: keyword
+            city_name:
+              type: keyword
+
+---
+# ILM Policies
+ilm_policies:
+  wakala_logs:
+    phases:
+      hot:
+        min_age: 0ms
+        actions:
+          rollover:
+            max_primary_shard_size: 50GB
+            max_age: 7d
+          set_priority:
+            priority: 100
+      warm:
+        min_age: 7d
+        actions:
+          shrink:
+            number_of_shards: 1
+          forcemerge:
+            max_num_segments: 1
+          set_priority:
+            priority: 50
+      cold:
+        min_age: 30d
+        actions:
+          set_priority:
+            priority: 0
+          freeze: {}
+      delete:
+        min_age: 90d
+        actions:
+          delete: {}
+
+---
+# Filebeat Configuration
+filebeat:
+  filebeat.inputs:
+  - type: container
+    enabled: true
+    paths:
+      - /var/log/containers/*wakala*.log
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+          - logs_path:
+              logs_path: "/var/log/containers/"
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+      - drop_event:
+          when:
+            or:
+              - contains:
+                  kubernetes.labels.app: "filebeat"
+              - equals:
+                  app.level: "DEBUG"
+  
+  output.logstash:
+    hosts: ["logstash:5044"]
+    ssl.enabled: true
+    ssl.certificate_authorities: ["/etc/pki/tls/certs/ca.crt"]
+    ssl.certificate: "/etc/pki/tls/certs/client.crt"
+    ssl.key: "/etc/pki/tls/private/client.key"
+  
+  processors:
+    - add_host_metadata:
+        when.not.contains.tags: forwarded
+    - add_docker_metadata: ~
+    - add_kubernetes_metadata: ~

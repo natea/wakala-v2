@@ -1,0 +1,202 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "wakala-platform.fullname" . }}-api-gateway
+  labels:
+    {{- include "wakala-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+data:
+  gateway.yaml: |
+    server:
+      port: 8080
+      graceful_shutdown_timeout: 30s
+    
+    routes:
+      - path: /api/v1/auth/*
+        service: auth-service
+        strip_prefix: false
+        timeout: 30s
+        retry:
+          attempts: 3
+          backoff: exponential
+      
+      - path: /api/v1/users/*
+        service: user-service
+        strip_prefix: false
+        timeout: 30s
+        auth_required: true
+      
+      - path: /api/v1/wallets/*
+        service: wallet-service
+        strip_prefix: false
+        timeout: 30s
+        auth_required: true
+      
+      - path: /api/v1/transactions/*
+        service: transaction-service
+        strip_prefix: false
+        timeout: 45s
+        auth_required: true
+        rate_limit:
+          requests_per_minute: 60
+      
+      - path: /api/v1/merchants/*
+        service: merchant-service
+        strip_prefix: false
+        timeout: 30s
+        auth_required: true
+      
+      - path: /api/v1/disbursements/*
+        service: settlement-service
+        strip_prefix: false
+        timeout: 60s
+        auth_required: true
+        rate_limit:
+          requests_per_minute: 10
+      
+      - path: /api/v1/notifications/*
+        service: notification-service
+        strip_prefix: false
+        timeout: 30s
+        auth_required: true
+      
+      - path: /api/v1/webhooks/*
+        service: webhook-service
+        strip_prefix: false
+        timeout: 30s
+        auth_required: true
+      
+      - path: /api/v1/reports/*
+        service: reporting-service
+        strip_prefix: false
+        timeout: 90s
+        auth_required: true
+    
+    services:
+      auth-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-auth:8081
+        health_check:
+          path: /health
+          interval: 10s
+      
+      user-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-user:8082
+        health_check:
+          path: /health
+          interval: 10s
+      
+      wallet-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-wallet:8083
+        health_check:
+          path: /health
+          interval: 10s
+      
+      transaction-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-transaction:8084
+        health_check:
+          path: /health
+          interval: 10s
+      
+      merchant-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-merchant:8087
+        health_check:
+          path: /health
+          interval: 10s
+      
+      settlement-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-settlement:8086
+        health_check:
+          path: /health
+          interval: 10s
+      
+      notification-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-notification:8085
+        health_check:
+          path: /health
+          interval: 10s
+      
+      webhook-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-webhook:8090
+        health_check:
+          path: /health
+          interval: 10s
+      
+      reporting-service:
+        url: http://{{ include "wakala-platform.fullname" . }}-reporting:8087
+        health_check:
+          path: /health
+          interval: 10s
+    
+    middleware:
+      - type: cors
+        config:
+          allowed_origins: {{ .Values.apiGateway.env | pluck "value" | first }}
+          allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+          allowed_headers: ["*"]
+          exposed_headers: ["X-Total-Count", "X-Page", "X-Per-Page"]
+          max_age: 86400
+      
+      - type: rate_limit
+        config:
+          enabled: true
+          default_limit: 100
+          window: 1m
+          key_by: ip
+      
+      - type: request_id
+        config:
+          header_name: X-Request-ID
+      
+      - type: logger
+        config:
+          log_request_body: false
+          log_response_body: false
+          exclude_paths: ["/health", "/metrics"]
+      
+      - type: compression
+        config:
+          enabled: true
+          level: 5
+          min_size: 1024
+      
+      - type: security_headers
+        config:
+          x_frame_options: DENY
+          x_content_type_options: nosniff
+          x_xss_protection: "1; mode=block"
+          strict_transport_security: "max-age=31536000; includeSubDomains"
+    
+    auth:
+      jwt:
+        public_key_url: http://{{ include "wakala-platform.fullname" . }}-auth:8081/api/v1/auth/.well-known/jwks.json
+        issuer: https://api.wakala.platform
+        audience: wakala-platform
+      
+      bypass_paths:
+        - /health
+        - /metrics
+        - /api/v1/auth/register
+        - /api/v1/auth/login
+        - /api/v1/auth/refresh
+        - /api/v1/auth/.well-known/jwks.json
+    
+    circuit_breaker:
+      failure_threshold: 5
+      success_threshold: 2
+      timeout: 10s
+      interval: 60s
+      max_requests: 100
+    
+    observability:
+      metrics:
+        enabled: true
+        port: 9090
+        path: /metrics
+      
+      tracing:
+        enabled: true
+        service_name: api-gateway
+        jaeger_endpoint: {{ .Values.global.jaeger.agent.host }}:{{ .Values.global.jaeger.agent.port }}
+        sampling_rate: {{ .Values.global.tracing.samplingRate | default 0.1 }}
+{{- end }}

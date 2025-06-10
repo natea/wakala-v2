@@ -1,0 +1,1214 @@
+openapi: 3.0.3
+info:
+  title: Wakala Mobile Money Platform API
+  description: |
+    Comprehensive API documentation for the Wakala mobile money platform.
+    
+    ## Authentication
+    All API endpoints (except auth endpoints) require JWT authentication.
+    Include the token in the Authorization header: `Bearer <token>`
+    
+    ## Rate Limiting
+    - Standard users: 100 requests per minute
+    - Business accounts: 1000 requests per minute
+    - Bulk operations: 10 requests per minute
+    
+    ## Webhooks
+    Configure webhooks to receive real-time notifications for events.
+    All webhooks are signed with HMAC-SHA256.
+  version: 1.0.0
+  contact:
+    name: Wakala Support
+    email: support@wakala.platform
+    url: https://wakala.platform/support
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.wakala.platform/v1
+    description: Production server
+  - url: https://staging-api.wakala.platform/v1
+    description: Staging server
+  - url: http://localhost:8080/v1
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User profile management
+  - name: Wallets
+    description: Wallet operations
+  - name: Transactions
+    description: Money transfers and payments
+  - name: Merchants
+    description: Merchant operations
+  - name: Disbursements
+    description: Bulk payment operations
+  - name: Notifications
+    description: Push notifications and alerts
+  - name: Webhooks
+    description: Webhook management
+  - name: Reports
+    description: Transaction reports and analytics
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Register a new user with phone number and PIN
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user with phone number and PIN
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get new access token using refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate current session
+      responses:
+        '204':
+          description: Logged out successfully
+
+  # User Endpoints
+  /users/profile:
+    get:
+      tags:
+        - Users
+      summary: Get user profile
+      description: Retrieve current user's profile information
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    put:
+      tags:
+        - Users
+      summary: Update user profile
+      description: Update user profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /users/kyc:
+    post:
+      tags:
+        - Users
+      summary: Submit KYC verification
+      description: Submit documents for KYC verification
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - document_type
+                - document_number
+                - document_image
+              properties:
+                document_type:
+                  type: string
+                  enum: [national_id, passport, driving_license]
+                document_number:
+                  type: string
+                document_image:
+                  type: string
+                  format: binary
+                selfie_image:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: KYC submitted for verification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, processing]
+
+  # Wallet Endpoints
+  /wallets/balance:
+    get:
+      tags:
+        - Wallets
+      summary: Get wallet balance
+      description: Retrieve current wallet balance
+      responses:
+        '200':
+          description: Wallet balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletBalance'
+
+  /wallets/transactions:
+    get:
+      tags:
+        - Wallets
+      summary: Get transaction history
+      description: Retrieve paginated transaction history
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [transfer, payment, deposit, withdrawal]
+      responses:
+        '200':
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+
+  /wallets/limits:
+    get:
+      tags:
+        - Wallets
+      summary: Get transaction limits
+      description: Get user's transaction limits based on KYC level
+      responses:
+        '200':
+          description: Transaction limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLimits'
+
+  # Transaction Endpoints
+  /transactions/transfer:
+    post:
+      tags:
+        - Transactions
+      summary: Send money
+      description: Transfer money to another user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: Transfer initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          $ref: '#/components/responses/InsufficientFunds'
+
+  /transactions/{transactionId}:
+    get:
+      tags:
+        - Transactions
+      summary: Get transaction details
+      description: Retrieve details of a specific transaction
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /transactions/{transactionId}/receipt:
+    get:
+      tags:
+        - Transactions
+      summary: Get transaction receipt
+      description: Download transaction receipt as PDF
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction receipt
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  # Merchant Endpoints
+  /merchants/register:
+    post:
+      tags:
+        - Merchants
+      summary: Register as merchant
+      description: Register business as merchant account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MerchantRegistration'
+      responses:
+        '201':
+          description: Merchant registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerchantProfile'
+
+  /merchants/payment-request:
+    post:
+      tags:
+        - Merchants
+      summary: Create payment request
+      description: Create a payment request for customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '201':
+          description: Payment request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRequestResponse'
+
+  /merchants/qr-code:
+    post:
+      tags:
+        - Merchants
+      summary: Generate QR code
+      description: Generate QR code for payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  minimum: 0
+                reference:
+                  type: string
+      responses:
+        '200':
+          description: QR code generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qr_code:
+                    type: string
+                    description: Base64 encoded QR code image
+                  payment_code:
+                    type: string
+
+  # Disbursement Endpoints
+  /disbursements/bulk:
+    post:
+      tags:
+        - Disbursements
+      summary: Create bulk disbursement
+      description: Send payments to multiple recipients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDisbursementRequest'
+      responses:
+        '201':
+          description: Disbursement created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDisbursementResponse'
+
+  /disbursements/batch/{batchId}:
+    get:
+      tags:
+        - Disbursements
+      summary: Get batch status
+      description: Get status of bulk disbursement batch
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Batch status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStatus'
+
+  # Notification Endpoints
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get notifications
+      description: Retrieve user notifications
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+
+  /notifications/{notificationId}/read:
+    put:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      description: Mark a notification as read
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification marked as read
+
+  # Webhook Endpoints
+  /webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: List webhooks
+      description: Get configured webhooks
+      responses:
+        '200':
+          description: Webhook list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookList'
+    
+    post:
+      tags:
+        - Webhooks
+      summary: Create webhook
+      description: Configure a new webhook endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookConfig'
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+  /webhooks/{webhookId}:
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete webhook
+      description: Remove a webhook configuration
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Webhook deleted
+
+  # Report Endpoints
+  /reports/statement:
+    post:
+      tags:
+        - Reports
+      summary: Generate account statement
+      description: Generate account statement for date range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - from_date
+                - to_date
+              properties:
+                from_date:
+                  type: string
+                  format: date
+                to_date:
+                  type: string
+                  format: date
+                format:
+                  type: string
+                  enum: [pdf, csv, excel]
+                  default: pdf
+      responses:
+        '202':
+          description: Report generation started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [processing]
+
+  /reports/{reportId}:
+    get:
+      tags:
+        - Reports
+      summary: Download report
+      description: Download generated report
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '202':
+          description: Report still processing
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Page number
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    
+    LimitParam:
+      name: limit
+      in: query
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+    # Authentication Schemas
+    RegisterRequest:
+      type: object
+      required:
+        - phone_number
+        - country_code
+        - pin
+        - device_id
+      properties:
+        phone_number:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: '+254712345678'
+        country_code:
+          type: string
+          example: 'KE'
+        pin:
+          type: string
+          minLength: 4
+          maxLength: 6
+          pattern: '^[0-9]+$'
+        device_id:
+          type: string
+        fcm_token:
+          type: string
+          description: Firebase Cloud Messaging token
+
+    LoginRequest:
+      type: object
+      required:
+        - phone_number
+        - pin
+      properties:
+        phone_number:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+        pin:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: 'Bearer'
+        expires_in:
+          type: integer
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    # User Schemas
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone_number:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        kyc_status:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+        kyc_level:
+          type: integer
+          minimum: 0
+          maximum: 3
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 50
+        last_name:
+          type: string
+          maxLength: 50
+        email:
+          type: string
+          format: email
+
+    # Wallet Schemas
+    WalletBalance:
+      type: object
+      properties:
+        balance:
+          type: number
+          minimum: 0
+        available_balance:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          example: 'KES'
+        held_amount:
+          type: number
+          minimum: 0
+        last_updated:
+          type: string
+          format: date-time
+
+    TransactionLimits:
+      type: object
+      properties:
+        daily_limit:
+          type: number
+        daily_remaining:
+          type: number
+        monthly_limit:
+          type: number
+        monthly_remaining:
+          type: number
+        per_transaction_limit:
+          type: number
+        minimum_balance:
+          type: number
+
+    # Transaction Schemas
+    TransferRequest:
+      type: object
+      required:
+        - receiver_phone
+        - amount
+        - pin
+      properties:
+        receiver_phone:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+        amount:
+          type: number
+          minimum: 1
+        currency:
+          type: string
+          default: 'KES'
+        description:
+          type: string
+          maxLength: 255
+        pin:
+          type: string
+
+    TransactionResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        amount:
+          type: number
+        currency:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        reference:
+          type: string
+
+    TransactionDetails:
+      allOf:
+        - $ref: '#/components/schemas/TransactionResponse'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum: [transfer, payment, deposit, withdrawal]
+            sender:
+              type: object
+              properties:
+                phone_number:
+                  type: string
+                name:
+                  type: string
+            receiver:
+              type: object
+              properties:
+                phone_number:
+                  type: string
+                name:
+                  type: string
+            fees:
+              type: number
+            description:
+              type: string
+            metadata:
+              type: object
+              additionalProperties: true
+
+    TransactionList:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionDetails'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # Merchant Schemas
+    MerchantRegistration:
+      type: object
+      required:
+        - business_name
+        - business_type
+        - tax_id
+      properties:
+        business_name:
+          type: string
+        business_type:
+          type: string
+          enum: [retail, restaurant, service, other]
+        tax_id:
+          type: string
+        business_address:
+          type: string
+        business_email:
+          type: string
+          format: email
+
+    MerchantProfile:
+      type: object
+      properties:
+        merchant_id:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+        merchant_code:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, pending]
+        created_at:
+          type: string
+          format: date-time
+
+    PaymentRequest:
+      type: object
+      required:
+        - amount
+        - customer_phone
+      properties:
+        amount:
+          type: number
+          minimum: 1
+        currency:
+          type: string
+          default: 'KES'
+        customer_phone:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+        description:
+          type: string
+        reference:
+          type: string
+
+    PaymentRequestResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired]
+        expires_at:
+          type: string
+          format: date-time
+
+    # Disbursement Schemas
+    BulkDisbursementRequest:
+      type: object
+      required:
+        - disbursements
+      properties:
+        disbursements:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: object
+            required:
+              - phone_number
+              - amount
+            properties:
+              phone_number:
+                type: string
+                pattern: '^\+[1-9]\d{1,14}$'
+              amount:
+                type: number
+                minimum: 1
+              reference:
+                type: string
+              description:
+                type: string
+        schedule_time:
+          type: string
+          format: date-time
+          description: Schedule disbursement for future
+
+    BulkDisbursementResponse:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        total_count:
+          type: integer
+        total_amount:
+          type: number
+        status:
+          type: string
+          enum: [queued, processing, completed, partial, failed]
+
+    BatchStatus:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, completed, partial, failed]
+        total_count:
+          type: integer
+        successful_count:
+          type: integer
+        failed_count:
+          type: integer
+        total_amount:
+          type: number
+        disbursed_amount:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        failed_transactions:
+          type: array
+          items:
+            type: object
+            properties:
+              phone_number:
+                type: string
+              amount:
+                type: number
+              error:
+                type: string
+
+    # Notification Schemas
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [transaction, security, promotion, system]
+        title:
+          type: string
+        message:
+          type: string
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        data:
+          type: object
+          additionalProperties: true
+
+    NotificationList:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        unread_count:
+          type: integer
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # Webhook Schemas
+    WebhookConfig:
+      type: object
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+            enum: [
+              transaction.completed,
+              transaction.failed,
+              payment.received,
+              payment.sent,
+              disbursement.completed,
+              disbursement.failed,
+              kyc.verified,
+              kyc.rejected
+            ]
+        secret:
+          type: string
+          description: Webhook signing secret
+
+    Webhook:
+      allOf:
+        - $ref: '#/components/schemas/WebhookConfig'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [active, inactive]
+            created_at:
+              type: string
+              format: date-time
+            last_triggered:
+              type: string
+              format: date-time
+
+    WebhookList:
+      type: object
+      properties:
+        webhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Webhook'
+
+    # Common Schemas
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total_pages:
+          type: integer
+        total_items:
+          type: integer
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    InsufficientFunds:
+      description: Insufficient funds
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          headers:
+            X-RateLimit-Limit:
+              description: Request limit per minute
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Remaining requests
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: Reset timestamp
+              schema:
+                type: integer

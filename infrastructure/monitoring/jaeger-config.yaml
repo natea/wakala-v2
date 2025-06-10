@@ -1,0 +1,471 @@
+# Jaeger Distributed Tracing Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-configuration
+  namespace: monitoring
+data:
+  collector.yaml: |
+    # Jaeger Collector Configuration
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+          thrift_compact:
+            endpoint: 0.0.0.0:6831
+          thrift_binary:
+            endpoint: 0.0.0.0:6832
+      
+      zipkin:
+        endpoint: 0.0.0.0:9411
+    
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+      
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 4096
+        spike_limit_mib: 512
+      
+      attributes:
+        actions:
+          - key: environment
+            value: production
+            action: upsert
+          - key: service.namespace
+            from_attribute: k8s.namespace.name
+            action: insert
+          - key: service.instance.id
+            from_attribute: k8s.pod.name
+            action: insert
+      
+      span:
+        name:
+          from_attributes: ["http.method", "http.route"]
+          separator: " "
+      
+      probabilistic_sampler:
+        sampling_percentage: 10
+    
+    exporters:
+      elasticsearch:
+        endpoints: ["https://elasticsearch:9200"]
+        index: "jaeger-span"
+        user: elastic
+        password: ${ELASTIC_PASSWORD}
+        tls:
+          ca_file: /etc/pki/tls/certs/ca.crt
+          insecure_skip_verify: false
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+      
+      jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:14250
+        tls:
+          insecure: true
+      
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: jaeger
+        const_labels:
+          service: jaeger
+    
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      
+      pprof:
+        endpoint: 0.0.0.0:1777
+      
+      zpages:
+        endpoint: 0.0.0.0:55679
+    
+    service:
+      extensions: [health_check, pprof, zpages]
+      pipelines:
+        traces:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [memory_limiter, batch, attributes, span, probabilistic_sampler]
+          exporters: [elasticsearch, prometheus]
+        
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-sampling
+  namespace: monitoring
+data:
+  sampling.json: |
+    {
+      "service_strategies": [
+        {
+          "service": "api-gateway",
+          "type": "adaptive",
+          "max_traces_per_second": 100,
+          "sampling_rate": 0.1
+        },
+        {
+          "service": "transaction-service",
+          "type": "adaptive",
+          "max_traces_per_second": 200,
+          "sampling_rate": 0.2
+        },
+        {
+          "service": "wallet-service",
+          "type": "adaptive",
+          "max_traces_per_second": 150,
+          "sampling_rate": 0.15
+        },
+        {
+          "service": "fraud-service",
+          "type": "probabilistic",
+          "param": 1.0
+        },
+        {
+          "service": "notification-service",
+          "type": "probabilistic",
+          "param": 0.05
+        }
+      ],
+      "default_strategy": {
+        "type": "adaptive",
+        "max_traces_per_second": 50,
+        "sampling_rate": 0.1
+      },
+      "operation_strategies": [
+        {
+          "operation": "POST /api/v1/transactions/transfer",
+          "type": "probabilistic",
+          "param": 0.5
+        },
+        {
+          "operation": "GET /health",
+          "type": "probabilistic",
+          "param": 0.001
+        }
+      ]
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-collector
+  namespace: monitoring
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jaeger-collector
+  template:
+    metadata:
+      labels:
+        app: jaeger-collector
+    spec:
+      containers:
+      - name: jaeger-collector
+        image: jaegertracing/jaeger-collector:1.41
+        ports:
+        - containerPort: 14250
+          name: grpc
+        - containerPort: 14268
+          name: thrift-http
+        - containerPort: 14269
+          name: admin
+        - containerPort: 9411
+          name: zipkin
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: elasticsearch
+        - name: ES_SERVER_URLS
+          value: https://elasticsearch:9200
+        - name: ES_USERNAME
+          value: elastic
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+        - name: ES_TLS_CA_FILE
+          value: /etc/pki/tls/certs/ca.crt
+        - name: ES_TLS_ENABLED
+          value: "true"
+        - name: ES_INDEX_PREFIX
+          value: jaeger
+        - name: ES_TAGS_AS_FIELDS_ALL
+          value: "true"
+        - name: ES_NUM_SHARDS
+          value: "3"
+        - name: ES_NUM_REPLICAS
+          value: "2"
+        - name: COLLECTOR_ZIPKIN_HOST_PORT
+          value: ":9411"
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        - name: METRICS_BACKEND
+          value: prometheus
+        - name: METRICS_HTTP_ROUTE
+          value: /metrics
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/jaeger
+        - name: certs
+          mountPath: /etc/pki/tls/certs
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 14269
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 14269
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: jaeger-configuration
+      - name: certs
+        secret:
+          secretName: elasticsearch-ca-cert
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jaeger-query
+  template:
+    metadata:
+      labels:
+        app: jaeger-query
+    spec:
+      containers:
+      - name: jaeger-query
+        image: jaegertracing/jaeger-query:1.41
+        ports:
+        - containerPort: 16686
+          name: query
+        - containerPort: 16687
+          name: admin
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: elasticsearch
+        - name: ES_SERVER_URLS
+          value: https://elasticsearch:9200
+        - name: ES_USERNAME
+          value: elastic
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+        - name: ES_TLS_CA_FILE
+          value: /etc/pki/tls/certs/ca.crt
+        - name: ES_TLS_ENABLED
+          value: "true"
+        - name: ES_INDEX_PREFIX
+          value: jaeger
+        - name: ES_MAX_SPAN_AGE
+          value: 168h
+        - name: QUERY_BASE_PATH
+          value: /jaeger
+        - name: QUERY_UI_CONFIG
+          value: /etc/jaeger/ui-config.json
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: certs
+          mountPath: /etc/pki/tls/certs
+        - name: ui-config
+          mountPath: /etc/jaeger
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16687
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16687
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: certs
+        secret:
+          secretName: elasticsearch-ca-cert
+      - name: ui-config
+        configMap:
+          name: jaeger-ui-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-ui-config
+  namespace: monitoring
+data:
+  ui-config.json: |
+    {
+      "dependencies": {
+        "menuEnabled": true
+      },
+      "archiveEnabled": true,
+      "tracking": {
+        "gaID": null,
+        "trackErrors": false
+      },
+      "menu": [
+        {
+          "label": "Wakala Dashboard",
+          "items": [
+            {
+              "label": "System Overview",
+              "url": "https://grafana.wakala.platform/d/system-overview"
+            },
+            {
+              "label": "Transaction Dashboard",
+              "url": "https://grafana.wakala.platform/d/transactions"
+            }
+          ]
+        }
+      ],
+      "search": {
+        "maxLookback": {
+          "label": "7 Days",
+          "value": "7d"
+        },
+        "maxLimit": 1500
+      },
+      "linkPatterns": [
+        {
+          "type": "logs",
+          "key": "trace_id",
+          "url": "https://kibana.wakala.platform/app/discover#/?_a=(query:(match:(trace_id:'#{trace_id}')))",
+          "text": "View Logs"
+        },
+        {
+          "type": "metrics",
+          "key": "service",
+          "url": "https://grafana.wakala.platform/d/service-metrics?var-service=#{service}",
+          "text": "View Metrics"
+        }
+      ]
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: monitoring
+spec:
+  selector:
+    app: jaeger-collector
+  ports:
+  - name: grpc
+    port: 14250
+    targetPort: 14250
+  - name: thrift-http
+    port: 14268
+    targetPort: 14268
+  - name: thrift-compact
+    port: 6831
+    targetPort: 6831
+    protocol: UDP
+  - name: thrift-binary
+    port: 6832
+    targetPort: 6832
+    protocol: UDP
+  - name: zipkin
+    port: 9411
+    targetPort: 9411
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+spec:
+  selector:
+    app: jaeger-query
+  ports:
+  - name: query
+    port: 16686
+    targetPort: 16686
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required'
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - jaeger.wakala.platform
+    secretName: jaeger-tls
+  rules:
+  - host: jaeger.wakala.platform
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger-query
+            port:
+              number: 16686

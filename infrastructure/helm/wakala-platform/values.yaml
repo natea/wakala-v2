@@ -1,0 +1,516 @@
+# Default values for wakala-platform
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  environment: production
+  region: us-east-1
+  domain: wakala.platform
+  tls:
+    enabled: true
+    issuer: letsencrypt-prod
+  
+# API Gateway Configuration
+apiGateway:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: wakala/api-gateway
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 8080
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/rate-limit: "100"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: api.wakala.platform
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: api-tls
+        hosts:
+          - api.wakala.platform
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: CORS_ORIGINS
+      value: "https://app.wakala.platform,https://merchant.wakala.platform"
+    - name: RATE_LIMIT_ENABLED
+      value: "true"
+
+# Auth Service Configuration
+authService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: wakala/auth-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8081
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  
+  env:
+    - name: JWT_EXPIRY
+      value: "3600"
+    - name: REFRESH_TOKEN_EXPIRY
+      value: "604800"
+
+# User Service Configuration
+userService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: wakala/user-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8082
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+# Wallet Service Configuration
+walletService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: wakala/wallet-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8083
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+  
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 100Gi
+
+# Transaction Service Configuration
+transactionService:
+  enabled: true
+  replicaCount: 5
+  image:
+    repository: wakala/transaction-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8084
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1000m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+
+# Notification Service Configuration
+notificationService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: wakala/notification-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8085
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+# Settlement Service Configuration
+settlementService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: wakala/settlement-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8086
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# Fraud Detection Service Configuration
+fraudService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: wakala/fraud-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8088
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1000m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 60
+
+# Compliance Service Configuration
+complianceService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: wakala/compliance-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8089
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# PostgreSQL Configuration
+postgresql:
+  enabled: true
+  auth:
+    database: wakala
+    username: wakala
+    existingSecret: wakala-db-secret
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 500Gi
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2000m"
+      limits:
+        memory: "8Gi"
+        cpu: "4000m"
+    nodeSelector:
+      workload: database
+    tolerations:
+      - key: "database"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 500Gi
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1000m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Redis Configuration
+redis:
+  enabled: true
+  architecture: replication
+  auth:
+    enabled: true
+    existingSecret: wakala-redis-secret
+  master:
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 50Gi
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1000m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 50Gi
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# RabbitMQ Configuration
+rabbitmq:
+  enabled: true
+  replicaCount: 3
+  auth:
+    username: wakala
+    existingPasswordSecret: wakala-rabbitmq-secret
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 50Gi
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Elasticsearch Configuration
+elasticsearch:
+  enabled: true
+  master:
+    replicaCount: 3
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 100Gi
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1000m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+  data:
+    replicaCount: 3
+    persistence:
+      enabled: true
+      storageClass: "gp3"
+      size: 500Gi
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2000m"
+      limits:
+        memory: "8Gi"
+        cpu: "4000m"
+  coordinating:
+    replicaCount: 2
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+
+# Monitoring Configuration
+monitoring:
+  prometheus:
+    enabled: true
+    retention: 30d
+    storageSize: 100Gi
+  grafana:
+    enabled: true
+    adminPassword: changeme
+  alertmanager:
+    enabled: true
+    config:
+      global:
+        resolve_timeout: 5m
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 12h
+        receiver: 'pagerduty'
+      receivers:
+        - name: 'pagerduty'
+          pagerduty_configs:
+            - service_key: YOUR_PAGERDUTY_KEY
+
+# Security Policies
+networkPolicies:
+  enabled: true
+  defaultDenyIngress: true
+  defaultDenyEgress: false
+
+podSecurityPolicies:
+  enabled: true
+  default:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 30  # days
+  storageClass: "gp3"
+  s3:
+    bucket: wakala-backups
+    region: us-east-1
+
+# Secrets Management
+secrets:
+  provider: aws-secrets-manager
+  rotation:
+    enabled: true
+    schedule: "0 0 1 * *"  # Monthly
+
+# Service Mesh Configuration
+serviceMesh:
+  enabled: true
+  provider: istio
+  mtls:
+    enabled: true
+    mode: STRICT
+  tracing:
+    enabled: true
+    sampling: 0.1
+
+# Cost Optimization
+spot:
+  enabled: true
+  percentage: 30
+  pools:
+    - instanceTypes:
+        - m5.large
+        - m5a.large
+        - m5n.large
+      minSize: 2
+      maxSize: 10
+
+# Compliance
+compliance:
+  pci:
+    enabled: true
+    scanSchedule: "0 0 * * 0"  # Weekly
+  gdpr:
+    enabled: true
+    dataRetention: 2555  # 7 years in days

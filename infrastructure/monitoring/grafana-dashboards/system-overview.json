@@ -1,0 +1,237 @@
+{
+  "dashboard": {
+    "title": "Wakala Platform - System Overview",
+    "uid": "wakala-system-overview",
+    "version": 1,
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health Status",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(up{job=\"wakala-services\"}) by (component)",
+            "legendFormat": "{{ component }}"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "green", "value": 1 }
+              ]
+            },
+            "mappings": [
+              { "type": "value", "value": "0", "text": "DOWN" },
+              { "type": "value", "value": "1", "text": "UP" }
+            ]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Request Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (service)",
+            "legendFormat": "{{ service }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "reqps", "label": "Requests/sec" }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) by (service)",
+            "legendFormat": "{{ service }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "reqps", "label": "Errors/sec" }
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": { "type": "gt", "params": [10] },
+              "operator": { "type": "and" },
+              "query": { "params": ["A", "5m", "now"] },
+              "reducer": { "type": "avg" },
+              "type": "query"
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Response Time (p95)",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le))",
+            "legendFormat": "{{ service }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Response Time" }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Active Users",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 12 },
+        "targets": [
+          {
+            "expr": "active_users_total"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Total Transactions Today",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 12 },
+        "targets": [
+          {
+            "expr": "increase(transaction_completed_total[24h])"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Transaction Volume",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+        "targets": [
+          {
+            "expr": "sum(rate(transaction_amount_total[5m])) by (type)",
+            "legendFormat": "{{ type }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "currencyKES", "label": "Volume/sec" }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Database Connections",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends{datname=\"wakala\"}",
+            "legendFormat": "Active Connections"
+          },
+          {
+            "expr": "pg_settings_max_connections",
+            "legendFormat": "Max Connections"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "CPU Usage by Service",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"wakala\"}[5m])) by (pod)",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "percentunit", "label": "CPU Usage" }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Memory Usage by Service",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+        "targets": [
+          {
+            "expr": "sum(container_memory_working_set_bytes{namespace=\"wakala\"}) by (pod)",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "bytes", "label": "Memory Usage" }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Redis Operations",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+        "targets": [
+          {
+            "expr": "sum(rate(redis_commands_processed_total[5m])) by (cmd)",
+            "legendFormat": "{{ cmd }}"
+          }
+        ],
+        "yaxes": [
+          { "format": "ops", "label": "Operations/sec" }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Message Queue Length",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+        "targets": [
+          {
+            "expr": "rabbitmq_queue_messages{namespace=\"wakala\"}",
+            "legendFormat": "{{ queue }}"
+          }
+        ]
+      }
+    ]
+  }
+}

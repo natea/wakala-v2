@@ -1,0 +1,194 @@
+groups:
+  - name: critical_alerts
+    interval: 30s
+    rules:
+      # Service Down Alerts
+      - alert: ServiceDown
+        expr: up{job="wakala-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+          description: "{{ $labels.service }} in namespace {{ $labels.namespace }} has been down for more than 1 minute."
+          runbook_url: "https://runbooks.wakala.platform/service-down"
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High error rate for {{ $labels.service }}"
+          description: "{{ $labels.service }} is experiencing {{ $value | humanizePercentage }} error rate."
+          runbook_url: "https://runbooks.wakala.platform/high-error-rate"
+
+      # Database Connection Pool Exhausted
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (
+            pg_stat_database_numbackends{datname="wakala"}
+            /
+            pg_settings_max_connections
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          team: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "PostgreSQL connection pool is {{ $value | humanizePercentage }} full."
+          runbook_url: "https://runbooks.wakala.platform/db-connection-pool"
+
+      # Transaction Processing Failure
+      - alert: TransactionProcessingFailure
+        expr: |
+          rate(transaction_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "High transaction failure rate"
+          description: "Transaction failures at {{ $value }} per second."
+          runbook_url: "https://runbooks.wakala.platform/transaction-failures"
+
+      # Wallet Balance Inconsistency
+      - alert: WalletBalanceInconsistency
+        expr: |
+          wallet_balance_discrepancy_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: payments
+          page: true
+        annotations:
+          summary: "Wallet balance inconsistency detected"
+          description: "{{ $value }} wallet balance inconsistencies detected. Immediate investigation required."
+          runbook_url: "https://runbooks.wakala.platform/wallet-inconsistency"
+
+      # API Gateway Down
+      - alert: APIGatewayDown
+        expr: |
+          up{job="wakala-services", component="api-gateway"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: platform
+          page: true
+        annotations:
+          summary: "API Gateway is down"
+          description: "API Gateway has been down for 30 seconds. All API traffic is affected."
+          runbook_url: "https://runbooks.wakala.platform/api-gateway-down"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            container_memory_working_set_bytes{namespace="wakala"}
+            /
+            container_spec_memory_limit_bytes{namespace="wakala"}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High memory usage for {{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit."
+          runbook_url: "https://runbooks.wakala.platform/high-memory"
+
+      # Disk Space Critical
+      - alert: DiskSpaceCritical
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"}
+            /
+            node_filesystem_size_bytes{mountpoint="/"}
+          ) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+          page: true
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Node {{ $labels.instance }} has only {{ $value | humanizePercentage }} disk space remaining."
+          runbook_url: "https://runbooks.wakala.platform/disk-space"
+
+      # Redis Master Down
+      - alert: RedisMasterDown
+        expr: |
+          redis_up{role="master"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+          page: true
+        annotations:
+          summary: "Redis master is down"
+          description: "Redis master has been down for more than 1 minute. Cache and session functionality affected."
+          runbook_url: "https://runbooks.wakala.platform/redis-master-down"
+
+      # Fraud Detection Service Failure
+      - alert: FraudDetectionFailure
+        expr: |
+          rate(fraud_detection_errors_total[5m]) > 5
+          or
+          up{job="wakala-services", component="fraud-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+          page: true
+        annotations:
+          summary: "Fraud detection service failure"
+          description: "Fraud detection is failing. Transactions may be processed without security checks."
+          runbook_url: "https://runbooks.wakala.platform/fraud-detection-failure"
+
+      # Settlement Processing Stuck
+      - alert: SettlementProcessingStuck
+        expr: |
+          time() - settlement_last_processed_timestamp > 3600
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "Settlement processing is stuck"
+          description: "No settlements processed in the last {{ $value | humanizeDuration }}."
+          runbook_url: "https://runbooks.wakala.platform/settlement-stuck"
+
+      # Certificate Expiry
+      - alert: CertificateExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 60 * 60
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "SSL certificate expiring soon for {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}."
+          runbook_url: "https://runbooks.wakala.platform/certificate-expiry"
+
+      # Kubernetes Pod CrashLooping
+      - alert: PodCrashLooping
+        expr: |
+          rate(kube_pod_container_status_restarts_total{namespace="wakala"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting {{ $value }} times per minute."
+          runbook_url: "https://runbooks.wakala.platform/pod-crashloop"

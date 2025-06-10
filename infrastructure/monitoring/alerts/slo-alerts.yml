@@ -1,0 +1,193 @@
+groups:
+  - name: slo_alerts
+    interval: 30s
+    rules:
+      # API Availability SLO
+      - alert: APIAvailabilitySLOBreach
+        expr: |
+          (
+            1 - (
+              sum(rate(http_requests_total{status!~"5.."}[5m])) by (service)
+              /
+              sum(rate(http_requests_total[5m])) by (service)
+            )
+          ) < 0.999
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          slo: true
+        annotations:
+          summary: "API availability SLO breach for {{ $labels.service }}"
+          description: "{{ $labels.service }} availability is {{ $value | humanizePercentage }}, below 99.9% SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/api-slo"
+
+      # API Latency SLO (p95)
+      - alert: APILatencyP95SLOBreach
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          slo: true
+        annotations:
+          summary: "API p95 latency SLO breach for {{ $labels.service }}"
+          description: "{{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}, above 200ms SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/api-slo"
+
+      # API Latency SLO (p99)
+      - alert: APILatencyP99SLOBreach
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          slo: true
+        annotations:
+          summary: "API p99 latency SLO breach for {{ $labels.service }}"
+          description: "{{ $labels.service }} p99 latency is {{ $value | humanizeDuration }}, above 500ms SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/api-slo"
+
+      # Transaction Success Rate SLO
+      - alert: TransactionSuccessRateSLOBreach
+        expr: |
+          (
+            sum(rate(transaction_completed_total[5m]))
+            /
+            sum(rate(transaction_initiated_total[5m]))
+          ) < 0.995
+        for: 10m
+        labels:
+          severity: critical
+          team: payments
+          slo: true
+        annotations:
+          summary: "Transaction success rate below SLO"
+          description: "Transaction success rate is {{ $value | humanizePercentage }}, below 99.5% SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/transaction-slo"
+
+      # Transaction Processing Time SLO
+      - alert: TransactionProcessingTimeSLOBreach
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(transaction_duration_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          slo: true
+        annotations:
+          summary: "Transaction processing time above SLO"
+          description: "p99 transaction processing time is {{ $value | humanizeDuration }}, above 2s SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/transaction-slo"
+
+      # Error Budget Burn Rate - Fast Burn
+      - alert: ErrorBudgetFastBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 14.4 * 0.001
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          slo: true
+        annotations:
+          summary: "Fast error budget burn for {{ $labels.service }}"
+          description: "{{ $labels.service }} is burning error budget 14.4x faster than sustainable rate."
+          dashboard_url: "https://grafana.wakala.platform/d/error-budget"
+
+      # Error Budget Burn Rate - Slow Burn
+      - alert: ErrorBudgetSlowBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[30m])) by (service)
+            /
+            sum(rate(http_requests_total[30m])) by (service)
+          ) > 1.2 * 0.001
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+          slo: true
+        annotations:
+          summary: "Slow error budget burn for {{ $labels.service }}"
+          description: "{{ $labels.service }} is burning error budget 1.2x faster than sustainable rate."
+          dashboard_url: "https://grafana.wakala.platform/d/error-budget"
+
+      # Monthly Error Budget Exhausted
+      - alert: MonthlyErrorBudgetExhausted
+        expr: |
+          (
+            1 - (
+              sum(increase(http_requests_total{status!~"5.."}[30d])) by (service)
+              /
+              sum(increase(http_requests_total[30d])) by (service)
+            )
+          ) > 0.001
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          slo: true
+          page: true
+        annotations:
+          summary: "Monthly error budget exhausted for {{ $labels.service }}"
+          description: "{{ $labels.service }} has exhausted its monthly error budget. Current error rate: {{ $value | humanizePercentage }}."
+          dashboard_url: "https://grafana.wakala.platform/d/error-budget"
+
+      # Wallet Balance Accuracy SLO
+      - alert: WalletBalanceAccuracySLOBreach
+        expr: |
+          sum(rate(wallet_balance_discrepancy_total[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: payments
+          slo: true
+          page: true
+        annotations:
+          summary: "Wallet balance accuracy SLO breach"
+          description: "Wallet balance discrepancies detected, violating 100% accuracy SLO."
+          dashboard_url: "https://grafana.wakala.platform/d/wallet-slo"
+
+      # Settlement Timeliness SLO
+      - alert: SettlementTimelinessSLOBreach
+        expr: |
+          (
+            sum(rate(settlement_delayed_total[5m]))
+            /
+            sum(rate(settlement_processed_total[5m]))
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          team: payments
+          slo: true
+        annotations:
+          summary: "Settlement timeliness SLO breach"
+          description: "{{ $value | humanizePercentage }} of settlements are delayed, above 1% SLO threshold."
+          dashboard_url: "https://grafana.wakala.platform/d/settlement-slo"
+
+      # Data Consistency SLO
+      - alert: DataConsistencySLOBreach
+        expr: |
+          sum(rate(data_consistency_check_failures_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          slo: true
+        annotations:
+          summary: "Data consistency SLO breach"
+          description: "Data consistency checks are failing at {{ $value }} per second."
+          dashboard_url: "https://grafana.wakala.platform/d/data-consistency"
