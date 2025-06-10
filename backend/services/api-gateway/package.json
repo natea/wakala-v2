@@ -7,7 +7,7 @@
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc -b",
     "start": "node dist/index.js",
-    "test": "jest",
+    "test": "jest --coverage --forceExit",
     "test:watch": "jest --watch"
   },
   "dependencies": {
@@ -17,16 +17,28 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "cors": "^2.8.5",
-    "http-proxy-middleware": "^2.0.6"
+    "http-proxy-middleware": "^2.0.6",
+    "jsonwebtoken": "^9.0.0",
+    "ioredis": "^5.3.2",
+    "compression": "^1.7.4",
+    "ws": "^8.13.0",
+    "ajv": "^8.12.0",
+    "isomorphic-dompurify": "^1.8.0",
+    "prom-client": "^14.2.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.24",
+    "@types/compression": "^1.7.2",
+    "@types/ws": "^8.5.4",
+    "@jest/globals": "^29.5.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.3",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "supertest": "^6.3.3",
+    "@types/supertest": "^2.0.12"
   }
 }
