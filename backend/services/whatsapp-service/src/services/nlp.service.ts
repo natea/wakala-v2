@@ -34,6 +34,11 @@ export class NLPService {
       }
     }
     
+    // Handle quick reply buttons FIRST (before other matches)
+    if (this.matchQuickReply(text)) {
+      return this.handleQuickReply(text);
+    }
+    
     // Simple intent matching for MVP
     if (this.matchGreeting(text)) {
       return this.handleGreeting();
@@ -71,14 +76,14 @@ export class NLPService {
       return this.handleCancellation();
     }
     
-    // Handle quick reply buttons
-    if (this.matchQuickReply(text)) {
-      return this.handleQuickReply(text);
-    }
-    
     // Check if this might be an address
     if (this.isPossibleAddress(text)) {
       return this.handleAddressInput(text);
+    }
+    
+    // Check if this is an order number
+    if (this.isOrderNumber(text)) {
+      return this.handleOrderTracking(text);
     }
     
     // Default fallback
@@ -135,7 +140,10 @@ export class NLPService {
                          'payment info', 'delivery info', 'back', 'see all',
                          'pizza', 'burgers', 'chinese', 'nigerian', 'indian',
                          'view menu #1', 'view menu #2', 'view menu #3',
-                         'order large pizza', 'order medium pizza', 'back to restaurants'];
+                         'order large pizza', 'order medium pizza', 'back to restaurants',
+                         'recent orders', 'enter order number', 'track another',
+                         'call rider', 'cancel order', 'track ord-78234', 'track ord-78156',
+                         'back to main menu'];
     return quickReplies.includes(text);
   }
 
@@ -154,6 +162,17 @@ export class NLPService {
     const hasAddressPattern = addressIndicators.some(pattern => pattern.test(text));
     
     return (hasNumber && hasMultipleWords) || hasAddressPattern;
+  }
+
+  private isOrderNumber(text: string): boolean {
+    // Check for order number patterns
+    const orderPatterns = [
+      /^ord-?\d+$/i,  // ORD-12345 or ORD12345
+      /^#?\d{5,}$/,   // #12345 or 12345 (5+ digits)
+      /order\s*#?\s*\d+/i  // "order #12345" or "order 12345"
+    ];
+    
+    return orderPatterns.some(pattern => pattern.test(text.trim()));
   }
 
   private handleGreeting(): NLPResponse {
@@ -223,8 +242,8 @@ export class NLPService {
   private handleOrderStatus(): NLPResponse {
     return {
       intent: { name: 'order_status', confidence: 0.95, entities: {} },
-      suggestedResponse: `To track your order, I'll need your order number. It usually starts with "ORD-" followed by numbers.\n\nYou can find it in your order confirmation message.`,
-      requiresContext: true
+      suggestedResponse: `I can help you track your order! Please provide your order number (e.g., ORD-12345) or choose an option below:`,
+      quickReplies: ['Recent Orders', 'Enter Order Number', 'Help']
     };
   }
 
@@ -301,6 +320,22 @@ export class NLPService {
         return this.handlePizzaOrder(text);
       case 'back to restaurants':
         return this.handleRestaurantSearch('');
+      case 'recent orders':
+        return this.handleRecentOrders();
+      case 'enter order number':
+        return this.handleEnterOrderNumber();
+      case 'track another':
+        return this.handleOrderStatus();
+      case 'call rider':
+        return this.handleCallRider();
+      case 'cancel order':
+        return this.handleCancellation();
+      case 'track ord-78234':
+        return this.handleOrderTracking('78234');
+      case 'track ord-78156':
+        return this.handleOrderTracking('78156');
+      case 'back to main menu':
+        return this.handleHelp();
       default:
         return this.handleUnknown();
     }
@@ -337,9 +372,45 @@ export class NLPService {
     // Extract menu number
     const menuNumber = selection.match(/\d+/)?.[0] || '1';
     
-    // In a real app, this would fetch actual menu data based on context
-    // For now, we'll show sample menus
-    const sampleMenus: Record<string, any> = {
+    // Store context about last cuisine selected (in real app, this would be in session)
+    // For now, we'll have different menus for different cuisines
+    const burgerMenus: Record<string, any> = {
+      '1': {
+        restaurant: 'Burger King',
+        items: [
+          '🍔 Whopper - ₦3,500',
+          '🍔 Double Cheeseburger - ₦2,800',
+          '🍔 Chicken Royale - ₦3,200',
+          '🍟 Large Fries - ₦1,200',
+          '🍗 Chicken Wings (6pcs) - ₦2,500',
+          '🥤 Soft Drinks - ₦500'
+        ]
+      },
+      '2': {
+        restaurant: 'McDonald\'s',
+        items: [
+          '🍔 Big Mac - ₦3,300',
+          '🍔 Quarter Pounder - ₦3,000',
+          '🍗 McNuggets (9pcs) - ₦2,200',
+          '🍟 Large Fries - ₦1,100',
+          '🥤 McFlurry - ₦1,500',
+          '☕ Coffee - ₦800'
+        ]
+      },
+      '3': {
+        restaurant: 'KFC',
+        items: [
+          '🍗 Zinger Burger - ₦2,900',
+          '🍗 Original Recipe (2pcs) - ₦2,500',
+          '🍗 Hot Wings (6pcs) - ₦2,200',
+          '🍟 Regular Fries - ₦900',
+          '🥤 Krushers - ₦1,300',
+          '🍞 Dinner Roll - ₦400'
+        ]
+      }
+    };
+
+    const pizzaMenus: Record<string, any> = {
       '1': {
         restaurant: 'Domino\'s Pizza',
         items: [
@@ -375,12 +446,13 @@ export class NLPService {
       }
     };
     
-    const menu = sampleMenus[menuNumber] || sampleMenus['1'];
+    // Default to pizza menus for now (in real app, would track context)
+    const menu = pizzaMenus[menuNumber] || pizzaMenus['1'];
     
     return {
       intent: { name: 'menu_viewed', confidence: 0.95, entities: { restaurant: menu.restaurant, menuNumber } },
-      suggestedResponse: `📋 *${menu.restaurant} Menu*\n\n${menu.items.join('\n')}\n\nWhat would you like to order? Just tell me the item and size!`,
-      quickReplies: ['Order Large Pizza', 'Order Medium Pizza', 'Back to Restaurants']
+      suggestedResponse: `📋 *${menu.restaurant} Menu*\n\n${menu.items.join('\n')}\n\nWhat would you like to order? Just tell me the item name!`,
+      quickReplies: ['Order Pizza', 'Order Wings', 'Back to Restaurants']
     };
   }
 
@@ -391,6 +463,64 @@ export class NLPService {
       intent: { name: 'pizza_order_started', confidence: 0.95, entities: { size } },
       suggestedResponse: `Great! You're ordering a ${size} pizza.\n\nWhich pizza would you like?\n\n1. Pepperoni Pizza\n2. BBQ Chicken Pizza\n3. Veggie Supreme\n4. Meat Lovers\n\nJust type the number or name of the pizza you want!`,
       requiresContext: true
+    };
+  }
+
+  private handleOrderTracking(orderNumber: string): NLPResponse {
+    // Extract just the number part if needed
+    const orderMatch = orderNumber.match(/\d+/);
+    const orderId = orderMatch ? orderMatch[0] : orderNumber;
+    
+    // Simulate order tracking with different statuses
+    const statuses = [
+      {
+        status: '✅ Order Confirmed',
+        time: '10 mins ago',
+        details: 'Your order has been confirmed and sent to the restaurant'
+      },
+      {
+        status: '👨‍🍳 Being Prepared',
+        time: '5 mins ago',
+        details: 'The restaurant is preparing your delicious meal'
+      },
+      {
+        status: '🚴 Out for Delivery',
+        time: 'Just now',
+        details: 'Your rider is on the way! ETA: 15-20 minutes'
+      }
+    ];
+    
+    // Randomly select a status for demo
+    const currentStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    
+    return {
+      intent: { name: 'order_tracked', confidence: 0.95, entities: { orderId } },
+      suggestedResponse: `📦 *Order #ORD-${orderId} Status*\n\n${currentStatus.status}\n⏰ ${currentStatus.time}\n\n${currentStatus.details}\n\n🏠 Delivery to: 29 Medford, MA 02155\n👤 Rider: John D. (4.8⭐)\n📱 Contact rider: +234-XXX-XXXX`,
+      quickReplies: ['Call Rider', 'Cancel Order', 'Track Another']
+    };
+  }
+
+  private handleRecentOrders(): NLPResponse {
+    return {
+      intent: { name: 'recent_orders_requested', confidence: 0.95, entities: {} },
+      suggestedResponse: `📋 *Your Recent Orders*\n\n1️⃣ *ORD-78234* - Today, 2:30 PM\n   🍕 Domino's Pizza - ₦4,500\n   Status: 🚴 Out for Delivery\n\n2️⃣ *ORD-78156* - Yesterday, 7:45 PM\n   🍔 Burger King - ₦3,200\n   Status: ✅ Delivered\n\n3️⃣ *ORD-77923* - Dec 8, 1:20 PM\n   🥘 Mama Put - ₦2,800\n   Status: ✅ Delivered\n\nWhich order would you like to track?`,
+      quickReplies: ['Track ORD-78234', 'Track ORD-78156', 'Back']
+    };
+  }
+
+  private handleEnterOrderNumber(): NLPResponse {
+    return {
+      intent: { name: 'order_number_requested', confidence: 0.95, entities: {} },
+      suggestedResponse: `Please enter your order number. It should look like:\n\n• ORD-12345\n• #12345\n• Or just the numbers: 12345\n\nYou can find it in your order confirmation message or receipt.`,
+      requiresContext: true
+    };
+  }
+
+  private handleCallRider(): NLPResponse {
+    return {
+      intent: { name: 'call_rider_requested', confidence: 0.95, entities: {} },
+      suggestedResponse: `📞 *Contact Your Rider*\n\n👤 Rider: John D.\n⭐ Rating: 4.8/5.0\n📱 Phone: +234-XXX-XXXX\n\n*Tap the number above to call directly*\n\nRider is currently 5 minutes away from your location.`,
+      quickReplies: ['Track Order', 'Back to Main Menu']
     };
   }
 
