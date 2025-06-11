@@ -1,0 +1,34 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Copy root package files for workspace setup
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+
+# Copy service-specific package files
+COPY backend/services/whatsapp-service/package.json ./backend/services/whatsapp-service/
+COPY backend/shared/utils/package.json ./backend/shared/utils/
+COPY backend/shared/config/package.json ./backend/shared/config/
+COPY backend/shared/types/package.json ./backend/shared/types/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY backend/services/whatsapp-service/src ./backend/services/whatsapp-service/src
+COPY backend/services/whatsapp-service/tsconfig.json ./backend/services/whatsapp-service/
+COPY backend/services/whatsapp-service/jest.config.js ./backend/services/whatsapp-service/
+COPY backend/shared ./backend/shared
+COPY tsconfig.json ./
+
+# Expose port
+EXPOSE 3002
+
+# Set working directory to the service
+WORKDIR /app/backend/services/whatsapp-service
+
+# Start in development mode with hot reload
+CMD ["pnpm", "run", "dev"]

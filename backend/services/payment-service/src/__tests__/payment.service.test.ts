@@ -14,6 +14,7 @@ import {
   WebhookEvent,
   ReconciliationStatus
 } from '../interfaces/payment.interfaces';
+import { createMockPayment } from '../../../../../tests/test-utils';
 
 // Mock dependencies
 jest.mock('../gateways/paystack.gateway');
@@ -147,6 +148,11 @@ describe('Payment Service', () => {
         createdAt: new Date()
       };
 
+      // Mock the name property getter
+      Object.defineProperty(paystackGateway, 'name', {
+        value: 'paystack',
+        writable: false
+      });
       paystackGateway.initiateMobileMoneyPayment.mockResolvedValue(mockResponse);
 
       const result = await paymentService.processMobileMoneyPayment(paymentRequest);
@@ -179,27 +185,37 @@ describe('Payment Service', () => {
         metadata: {}
       };
 
+      const mockPayment = createMockPayment({
+        id: 'pay-error',
+        status: PaymentStatus.PENDING
+      });
+
+      paymentRepository.create.mockResolvedValue(mockPayment);
       paystackGateway.initiatePayment.mockRejectedValue(
         new Error('Gateway error: Service unavailable')
       );
 
       await expect(paymentService.processPayment(paymentRequest))
         .rejects.toThrow('Gateway error: Service unavailable');
+      
+      // Verify that payment was marked as failed
+      expect(paymentRepository.update).toHaveBeenCalledWith('pay-error', {
+        status: PaymentStatus.FAILED,
+        failureReason: 'Gateway error: Service unavailable'
+      });
     });
   });
 
   describe('Payment Status', () => {
     test('should get payment status', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-123',
         status: PaymentStatus.SUCCESS,
         amount: 10000,
         currency: 'NGN',
         reference: 'ref-123',
-        gateway: 'paystack',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+        gateway: 'paystack'
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
 
@@ -215,18 +231,18 @@ describe('Payment Service', () => {
     });
 
     test('should update payment status', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-123',
         status: PaymentStatus.PENDING,
         gateway: 'paystack',
         reference: 'ref-123'
-      };
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
-      paymentRepository.update.mockResolvedValue({
+      paymentRepository.update.mockResolvedValue(createMockPayment({
         ...mockPayment,
         status: PaymentStatus.SUCCESS
-      });
+      }));
 
       const updated = await paymentService.updatePaymentStatus(
         'pay-123',
@@ -234,9 +250,13 @@ describe('Payment Service', () => {
       );
 
       expect(updated.status).toBe(PaymentStatus.SUCCESS);
-      expect(paymentRepository.update).toHaveBeenCalledWith('pay-123', {
-        status: PaymentStatus.SUCCESS
-      });
+      expect(paymentRepository.update).toHaveBeenCalledWith('pay-123', 
+        expect.objectContaining({
+          status: PaymentStatus.SUCCESS,
+          updatedAt: expect.any(Date),
+          completedAt: expect.any(Date)
+        })
+      );
     });
 
     test('should handle payment not found', async () => {
@@ -249,14 +269,14 @@ describe('Payment Service', () => {
 
   describe('Refunds', () => {
     test('should process full refund', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-123',
         amount: 10000,
         currency: 'NGN',
         status: PaymentStatus.SUCCESS,
         gateway: 'paystack',
         reference: 'ref-123'
-      };
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
       paystackGateway.refundPayment.mockResolvedValue({
@@ -274,14 +294,14 @@ describe('Payment Service', () => {
     });
 
     test('should process partial refund', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-456',
         amount: 20000,
         currency: 'ZAR',
         status: PaymentStatus.SUCCESS,
         gateway: 'yoco',
         reference: 'ref-456'
-      };
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
       yocoGateway.refundPayment.mockResolvedValue({
@@ -299,11 +319,11 @@ describe('Payment Service', () => {
     });
 
     test('should reject refund for failed payment', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-789',
         status: PaymentStatus.FAILED,
         gateway: 'paystack'
-      };
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
 
@@ -312,12 +332,12 @@ describe('Payment Service', () => {
     });
 
     test('should reject refund amount exceeding original', async () => {
-      const mockPayment = {
+      const mockPayment = createMockPayment({
         id: 'pay-999',
         amount: 10000,
         status: PaymentStatus.SUCCESS,
         gateway: 'paystack'
-      };
+      });
 
       paymentRepository.findById.mockResolvedValue(mockPayment);
 
@@ -386,7 +406,19 @@ describe('Payment Orchestrator', () => {
   });
 
   test('should cancel recurring payment', async () => {
-    const result = await orchestrator.cancelRecurringPayment('sub-123');
+    // First create a subscription
+    const recurringRequest = {
+      amount: 5000,
+      currency: 'NGN',
+      customerId: 'cust-cancel',
+      interval: 'monthly' as const,
+      startDate: new Date()
+    };
+
+    const subscription = await orchestrator.createRecurringPayment(recurringRequest);
+    
+    // Then cancel it
+    const result = await orchestrator.cancelRecurringPayment(subscription.id);
 
     expect(result.status).toBe('cancelled');
   });
@@ -435,7 +467,7 @@ describe('Payment Orchestrator', () => {
       .rejects.toThrow('Payment failed after 3 attempts');
 
     expect(paymentService.processPayment).toHaveBeenCalledTimes(3);
-  });
+  }, 10000);
 });
 
 describe('Reconciliation Service', () => {
@@ -460,8 +492,8 @@ describe('Reconciliation Service', () => {
     const endDate = new Date('2024-01-31');
 
     const dbPayments = [
-      { id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS },
-      { id: 'pay-2', reference: 'ref-2', amount: 20000, gateway: 'paystack', status: PaymentStatus.SUCCESS }
+      createMockPayment({ id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS }),
+      createMockPayment({ id: 'pay-2', reference: 'ref-2', amount: 20000, gateway: 'paystack', status: PaymentStatus.SUCCESS })
     ];
 
     const gatewayTransactions = [
@@ -471,6 +503,7 @@ describe('Reconciliation Service', () => {
 
     paymentRepository.findByDateRange.mockResolvedValue(dbPayments);
     paystackGateway.getTransactions.mockResolvedValue(gatewayTransactions);
+    yocoGateway.getTransactions.mockResolvedValue([]); // No Yoco transactions
 
     const result = await reconciliationService.reconcilePayments(startDate, endDate);
 
@@ -482,7 +515,7 @@ describe('Reconciliation Service', () => {
 
   test('should detect mismatched amounts', async () => {
     const dbPayments = [
-      { id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS }
+      createMockPayment({ id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS })
     ];
 
     const gatewayTransactions = [
@@ -491,18 +524,19 @@ describe('Reconciliation Service', () => {
 
     paymentRepository.findByDateRange.mockResolvedValue(dbPayments);
     paystackGateway.getTransactions.mockResolvedValue(gatewayTransactions);
+    yocoGateway.getTransactions.mockResolvedValue([]); // No Yoco transactions
 
     const result = await reconciliationService.reconcilePayments(new Date(), new Date());
 
     expect(result.mismatched).toBe(1);
     expect(result.discrepancies).toHaveLength(1);
-    expect(result.discrepancies[0].type).toBe('amount_mismatch');
+    expect(result.discrepancies[0]?.type).toBe('amount_mismatch');
   });
 
   test('should detect missing transactions', async () => {
     const dbPayments = [
-      { id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS },
-      { id: 'pay-2', reference: 'ref-2', amount: 20000, gateway: 'paystack', status: PaymentStatus.SUCCESS }
+      createMockPayment({ id: 'pay-1', reference: 'ref-1', amount: 10000, gateway: 'paystack', status: PaymentStatus.SUCCESS }),
+      createMockPayment({ id: 'pay-2', reference: 'ref-2', amount: 20000, gateway: 'paystack', status: PaymentStatus.SUCCESS })
     ];
 
     const gatewayTransactions = [
@@ -512,12 +546,13 @@ describe('Reconciliation Service', () => {
 
     paymentRepository.findByDateRange.mockResolvedValue(dbPayments);
     paystackGateway.getTransactions.mockResolvedValue(gatewayTransactions);
+    yocoGateway.getTransactions.mockResolvedValue([]); // No Yoco transactions
 
     const result = await reconciliationService.reconcilePayments(new Date(), new Date());
 
     expect(result.missing).toBe(1);
     expect(result.discrepancies).toHaveLength(1);
-    expect(result.discrepancies[0].type).toBe('missing_in_gateway');
+    expect(result.discrepancies[0]?.type).toBe('missing_in_gateway');
   });
 
   test('should generate reconciliation report', async () => {
@@ -532,6 +567,15 @@ describe('Reconciliation Service', () => {
       totalProcessed: 100,
       discrepancies: []
     };
+
+    // Mock some payments for the report
+    const mockPayments = [
+      createMockPayment({ amount: 1000, paymentMethod: PaymentMethod.CARD, status: PaymentStatus.SUCCESS }),
+      createMockPayment({ amount: 2000, paymentMethod: PaymentMethod.CARD, status: PaymentStatus.SUCCESS }),
+      createMockPayment({ amount: 1500, paymentMethod: PaymentMethod.BANK_TRANSFER, status: PaymentStatus.FAILED })
+    ];
+
+    paymentRepository.findByDateRange.mockResolvedValue(mockPayments);
 
     const report = await reconciliationService.generateReport(reconciliationResult);
 
@@ -565,16 +609,16 @@ describe('Webhook Handler', () => {
       }
     };
 
-    paymentService.getPaymentByReference.mockResolvedValue({
+    paymentService.getPaymentByReference.mockResolvedValue(createMockPayment({
       id: 'pay-123',
       reference: 'ref-123',
       status: PaymentStatus.PENDING
-    });
+    }));
 
-    paymentService.updatePaymentStatus.mockResolvedValue({
+    paymentService.updatePaymentStatus.mockResolvedValue(createMockPayment({
       id: 'pay-123',
       status: PaymentStatus.SUCCESS
-    });
+    }));
 
     const result = await webhookHandler.handlePaystackWebhook(webhookEvent);
 
@@ -595,11 +639,11 @@ describe('Webhook Handler', () => {
       }
     };
 
-    paymentService.getPaymentByReference.mockResolvedValue({
+    paymentService.getPaymentByReference.mockResolvedValue(createMockPayment({
       id: 'pay-456',
       reference: 'ref-456',
       status: PaymentStatus.PENDING
-    });
+    }));
 
     const result = await webhookHandler.handleYocoWebhook(webhookEvent);
 
@@ -661,21 +705,27 @@ describe('Webhook Handler', () => {
     };
 
     paymentService.getPaymentByReference.mockImplementation(() => 
-      new Promise((resolve) => setTimeout(resolve, 6000))
+      new Promise((resolve) => setTimeout(() => resolve(createMockPayment()), 6000))
     );
 
     await expect(webhookHandler.handlePaystackWebhook(webhookEvent, 5000))
       .rejects.toThrow('Webhook processing timeout');
-  });
+  }, 10000);
 });
 
 describe('Payment Service - Full Coverage', () => {
   let paymentService: PaymentService;
+  let paymentRepository: jest.Mocked<PaymentRepository>;
 
   beforeEach(() => {
-    const paymentRepository = new PaymentRepository() as jest.Mocked<PaymentRepository>;
+    paymentRepository = new PaymentRepository() as jest.Mocked<PaymentRepository>;
     const paystackGateway = new PaystackGateway({}) as jest.Mocked<PaystackGateway>;
     const yocoGateway = new YocoGateway({}) as jest.Mocked<YocoGateway>;
+    
+    // Mock repository methods
+    paymentRepository.create = jest.fn();
+    paymentRepository.findById = jest.fn();
+    paymentRepository.update = jest.fn();
     
     paymentService = new PaymentService(
       paymentRepository,
@@ -693,6 +743,14 @@ describe('Payment Service - Full Coverage', () => {
       paymentMethod: PaymentMethod.BANK_TRANSFER,
       metadata: {}
     };
+
+    const mockPayment = createMockPayment({
+      id: 'pay-bank',
+      status: PaymentStatus.PENDING,
+      paymentMethod: PaymentMethod.BANK_TRANSFER
+    });
+
+    paymentRepository.create.mockResolvedValue(mockPayment);
 
     const result = await paymentService.processBankTransfer(paymentRequest);
 
@@ -716,17 +774,31 @@ describe('Payment Service - Full Coverage', () => {
   });
 
   test('should format amount for gateway', () => {
-    const formatted = paymentService.formatAmountForGateway(100.50, 'NGN');
+    const formatted = paymentService.formatAmountForGateway(100.50);
     expect(formatted).toBe(10050); // Convert to kobo
   });
 
   test('should handle payment timeout', async () => {
     const paymentId = 'pay-timeout';
     
+    const mockPayment = createMockPayment({
+      id: paymentId,
+      status: PaymentStatus.PENDING
+    });
+
+    paymentRepository.findById.mockResolvedValue(mockPayment);
+    paymentRepository.update.mockResolvedValue(createMockPayment({
+      ...mockPayment,
+      status: PaymentStatus.TIMEOUT
+    }));
+    
     await paymentService.handlePaymentTimeout(paymentId);
     
-    // Verify payment was marked as timed out
-    const status = await paymentService.getPaymentStatus(paymentId);
-    expect(status.status).toBe(PaymentStatus.TIMEOUT);
+    // Verify update was called with timeout status
+    expect(paymentRepository.update).toHaveBeenCalledWith(paymentId, 
+      expect.objectContaining({
+        status: PaymentStatus.TIMEOUT
+      })
+    );
   });
 });

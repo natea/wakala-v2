@@ -1,0 +1,142 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wakala
+      POSTGRES_USER: wakala_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wakala_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wakala_user -d wakala"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: wakala_user
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_dev_password}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Object Storage (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-wakala_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./backend/services/api-gateway/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      RABBITMQ_URL: amqp://wakala_user:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: wakala
+      DB_USER: wakala_user
+      DB_PASSWORD: ${DB_PASSWORD:-wakala_dev_password}
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/services/api-gateway/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # WhatsApp Service
+  whatsapp-service:
+    build:
+      context: .
+      dockerfile: ./backend/services/whatsapp-service/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_password}@redis:6379
+      RABBITMQ_URL: amqp://wakala_user:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: wakala
+      DB_USER: wakala_user
+      DB_PASSWORD: ${DB_PASSWORD:-wakala_dev_password}
+      WHATSAPP_API_URL: ${WHATSAPP_API_URL}
+      WHATSAPP_BUSINESS_ID: ${WHATSAPP_BUSINESS_ID}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+    ports:
+      - "3002:3002"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/services/whatsapp-service/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:
+
+networks:
+  default:
+    name: wakala_network

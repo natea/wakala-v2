@@ -108,8 +108,8 @@ export class PaymentOrchestrator {
         lastError = error as Error;
         
         // Don't retry if it's a validation error
-        if (error.message.includes('Invalid payment request')) {
-          throw error;
+        if (lastError.message.includes('Invalid payment request')) {
+          throw lastError;
         }
 
         // Wait before retrying (exponential backoff)
@@ -155,7 +155,7 @@ export class PaymentOrchestrator {
     );
 
     return results.map((result, index) => ({
-      request: requests[index],
+      request: requests[index]!,
       result: result.status === 'fulfilled' ? result.value : result.reason
     }));
   }

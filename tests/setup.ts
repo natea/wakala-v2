@@ -2,8 +2,8 @@
 import { jest } from '@jest/globals';
 
 // Set test environment variables
-process.env.NODE_ENV = 'test';
-process.env.LOG_LEVEL = 'error'; // Reduce log noise during tests
+process.env['NODE_ENV'] = 'test';
+process.env['LOG_LEVEL'] = 'error'; // Reduce log noise during tests
 
 // Global test timeout
 jest.setTimeout(10000);

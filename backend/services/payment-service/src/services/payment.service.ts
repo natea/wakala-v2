@@ -54,7 +54,7 @@ export class PaymentService {
       // Update payment as failed
       await this.paymentRepository.update(payment.id, {
         status: PaymentStatus.FAILED,
-        failureReason: error.message
+        failureReason: error instanceof Error ? error.message : 'Unknown error'
       });
       
       throw error;
@@ -143,11 +143,16 @@ export class PaymentService {
       throw new Error('Payment not found');
     }
 
-    const updated = await this.paymentRepository.update(paymentId, {
+    const updateData: Partial<Payment> = {
       status,
-      updatedAt: new Date(),
-      completedAt: status === PaymentStatus.SUCCESS ? new Date() : undefined
-    });
+      updatedAt: new Date()
+    };
+
+    if (status === PaymentStatus.SUCCESS) {
+      updateData.completedAt = new Date();
+    }
+
+    const updated = await this.paymentRepository.update(paymentId, updateData);
 
     return updated;
   }
@@ -205,7 +210,7 @@ export class PaymentService {
     }
   }
 
-  formatAmountForGateway(amount: number, currency: string): number {
+  formatAmountForGateway(amount: number): number {
     // Convert to smallest currency unit (kobo for NGN, cents for ZAR)
     return Math.round(amount * 100);
   }

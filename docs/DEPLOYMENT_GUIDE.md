@@ -14,7 +14,7 @@
 ## Prerequisites
 
 ### Required Tools
-- Node.js 18+ and npm 9+
+- Node.js 18+ and pnpm 8+
 - Docker 24+ and Docker Compose 2.20+
 - Kubernetes 1.28+ (kubectl)
 - Helm 3.12+
@@ -45,16 +45,12 @@ cd wakala-v2
 
 ### 2. Install Dependencies
 ```bash
-# Install root dependencies
-npm install
+# Install all dependencies for the entire workspace
+# This will install dependencies for all services and packages
+pnpm install
 
-# Install all service dependencies
-npm run install:all
-
-# Or install individually
-cd backend/services/api-gateway && npm install
-cd ../order-service && npm install
-# ... repeat for each service
+# Dependencies will be automatically installed for all workspace packages
+# No need to install individually when using pnpm workspaces
 ```
 
 ### 3. Setup Local Databases
@@ -74,13 +70,13 @@ docker-compose ps
 ### 4. Initialize Databases
 ```bash
 # Run migrations
-npm run db:migrate
+pnpm run db:migrate
 
 # Seed test data (optional)
-npm run db:seed
+pnpm run db:seed
 
 # Create test tenants
-npm run create:test-tenants
+pnpm run create:test-tenants
 ```
 
 ### 5. Configure Environment
@@ -97,12 +93,12 @@ nano .env.local
 ### 6. Start Services
 ```bash
 # Start all services in development mode
-npm run dev
+pnpm run dev
 
 # Or start individually
-npm run dev:api-gateway
-npm run dev:order-service
-npm run dev:payment-service
+pnpm run dev:api-gateway
+pnpm run dev:order-service
+pnpm run dev:payment-service
 # ... etc
 
 # Services will be available at:
@@ -128,15 +124,15 @@ ngrok http 3000
 ### 8. Run Tests
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Run specific test suites
-npm run test:unit
-npm run test:integration
-npm run test:e2e
+pnpm run test:unit
+pnpm run test:integration
+pnpm run test:e2e
 
 # Run with coverage
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ## Environment Configuration
@@ -480,15 +476,20 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-        cache: 'npm'
+        cache: 'pnpm'
+    
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
     
     - name: Install dependencies
-      run: npm ci
+      run: pnpm install --frozen-lockfile
     
     - name: Run tests
       run: |
-        npm run test:unit
-        npm run test:integration
+        pnpm run test:unit
+        pnpm run test:integration
     
     - name: Upload coverage
       uses: codecov/codecov-action@v3
@@ -586,7 +587,7 @@ kubectl set image deployment/api-gateway api-gateway=wakala/api-gateway:$NEW_VER
 kubectl rollout status deployment/api-gateway -n wakala-prod
 
 # 5. Run smoke tests
-npm run test:smoke -- --env=production
+pnpm run test:smoke -- --env=production
 
 # 6. Complete rollout or rollback
 kubectl rollout undo deployment/api-gateway -n wakala-prod  # If issues

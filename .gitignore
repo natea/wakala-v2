@@ -80,3 +80,9 @@ dmypy.json
 
 # Roo
 .roo/mcp.json
+register-with-certificate.sh
+test-whatsapp-nlp.sh
+test-whatsapp-template.sh
+test-whatsapp.sh
+verify-phone.sh
+verify-whatsapp-config.sh

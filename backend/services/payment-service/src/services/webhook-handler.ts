@@ -35,10 +35,10 @@ export class WebhookHandler {
 
       return result;
     } catch (error) {
-      if (error.message === 'Timeout') {
+      if (error instanceof Error && error.message === 'Timeout') {
         throw new Error('Webhook processing timeout');
       }
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
@@ -59,7 +59,7 @@ export class WebhookHandler {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 

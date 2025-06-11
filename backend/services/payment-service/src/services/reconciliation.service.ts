@@ -29,7 +29,7 @@ export class ReconciliationService {
       const dbPaymentMap = new Map(dbPayments.map(p => [p.reference, p]));
 
       // Get transactions from each gateway
-      for (const [gatewayName, gateway] of Object.entries(this.gateways)) {
+      for (const [, gateway] of Object.entries(this.gateways)) {
         const gatewayTransactions = await gateway.getTransactions(startDate, endDate);
         
         // Check each gateway transaction
@@ -57,6 +57,7 @@ export class ReconciliationService {
               gatewayRecord: transaction,
               difference: Math.abs(dbPayment.amount - transaction.amount)
             });
+            dbPaymentMap.delete(transaction.reference); // Remove from map even if mismatched
             continue;
           }
 
@@ -70,6 +71,7 @@ export class ReconciliationService {
               dbRecord: dbPayment,
               gatewayRecord: transaction
             });
+            dbPaymentMap.delete(transaction.reference); // Remove from map even if mismatched
             continue;
           }
 

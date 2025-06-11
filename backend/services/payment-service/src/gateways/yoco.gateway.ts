@@ -5,7 +5,8 @@ import {
   PaymentResponse, 
   Payment,
   RefundResponse,
-  PaymentStatus 
+  PaymentStatus,
+  PaymentMethod
 } from '../interfaces/payment.interfaces';
 
 export interface YocoConfig {
@@ -17,12 +18,10 @@ export interface YocoConfig {
 export class YocoGateway implements PaymentGateway {
   public readonly name = 'yoco';
   private secretKey: string;
-  private publicKey: string;
   private baseUrl: string;
 
   constructor(config: YocoConfig) {
-    this.secretKey = config.secretKey || process.env.YOCO_SECRET_KEY || '';
-    this.publicKey = config.publicKey || process.env.YOCO_PUBLIC_KEY || '';
+    this.secretKey = config.secretKey || process.env['YOCO_SECRET_KEY'] || '';
     this.baseUrl = config.baseUrl || 'https://api.yoco.com/v1';
   }
 
@@ -39,9 +38,9 @@ export class YocoGateway implements PaymentGateway {
             reference: this.generateReference(),
             ...request.metadata
           },
-          successUrl: `${process.env.FRONTEND_URL}/payment/success`,
-          cancelUrl: `${process.env.FRONTEND_URL}/payment/cancel`,
-          failureUrl: `${process.env.FRONTEND_URL}/payment/failure`
+          successUrl: `${process.env['FRONTEND_URL']}/payment/success`,
+          cancelUrl: `${process.env['FRONTEND_URL']}/payment/cancel`,
+          failureUrl: `${process.env['FRONTEND_URL']}/payment/failure`
         },
         {
           headers: {
@@ -62,8 +61,8 @@ export class YocoGateway implements PaymentGateway {
         authorizationUrl: data.redirectUrl,
         createdAt: new Date()
       };
-    } catch (error) {
-      throw new Error(`Yoco error: ${error.response?.data?.message || error.message}`);
+    } catch (error: any) {
+      throw new Error(`Yoco error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -80,23 +79,28 @@ export class YocoGateway implements PaymentGateway {
 
       const { data } = response;
 
-      return {
+      const payment: Payment = {
         id: data.id,
         amount: data.amount / 100,
         currency: data.currency,
         customerId: data.metadata.customerId,
         orderId: data.metadata.orderId,
         status: this.mapStatus(data.status),
-        paymentMethod: 'CARD' as any,
+        paymentMethod: PaymentMethod.CARD,
         gateway: 'yoco',
         reference: data.metadata.reference,
         metadata: data.metadata,
         createdAt: new Date(data.createdDate),
-        updatedAt: new Date(data.updatedDate),
-        completedAt: data.status === 'successful' ? new Date(data.updatedDate) : undefined
+        updatedAt: new Date(data.updatedDate)
       };
-    } catch (error) {
-      throw new Error(`Verification error: ${error.response?.data?.message || error.message}`);
+
+      if (data.status === 'successful') {
+        payment.completedAt = new Date(data.updatedDate);
+      }
+
+      return payment;
+    } catch (error: any) {
+      throw new Error(`Verification error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -133,8 +137,8 @@ export class YocoGateway implements PaymentGateway {
         status: data.status,
         createdAt: new Date(data.createdDate)
       };
-    } catch (error) {
-      throw new Error(`Refund error: ${error.response?.data?.message || error.message}`);
+    } catch (error: any) {
+      throw new Error(`Refund error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -161,8 +165,8 @@ export class YocoGateway implements PaymentGateway {
         currency: payment.currency,
         createdAt: payment.createdDate
       }));
-    } catch (error) {
-      throw new Error(`Failed to fetch transactions: ${error.message}`);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch transactions: ${error.message || 'Unknown error'}`);
     }
   }
 

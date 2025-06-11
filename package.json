@@ -10,19 +10,33 @@
   ],
   "scripts": {
     "dev": "docker-compose up -d",
+    "dev:api-gateway": "pnpm --filter @services/api-gateway dev",
+    "dev:order-service": "pnpm --filter @services/order-service dev",
+    "dev:payment-service": "pnpm --filter @services/payment-service dev",
+    "dev:delivery-service": "pnpm --filter @services/delivery-service dev",
     "test": "jest",
+    "test:unit": "pnpm -r run test",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:e2e": "jest --testPathPattern=e2e",
+    "test:smoke": "jest --testPathPattern=smoke",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "db:migrate": "pnpm --filter @services/api-gateway run db:migrate",
+    "db:seed": "pnpm --filter @services/api-gateway run db:seed",
+    "create:test-tenants": "pnpm --filter @services/api-gateway run create:test-tenants",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "build": "tsc -b",
     "clean": "tsc -b --clean"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/decimal.js": "^7.4.3",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.24",
     "@typescript-eslint/eslint-plugin": "^7.1.0",
     "@typescript-eslint/parser": "^7.1.0",
+    "decimal.js": "^10.5.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.3",
@@ -43,6 +57,6 @@
   },
   "engines": {
     "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "pnpm": ">=8.0.0"
   }
 }

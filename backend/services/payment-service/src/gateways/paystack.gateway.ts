@@ -5,7 +5,8 @@ import {
   PaymentResponse, 
   Payment,
   RefundResponse,
-  PaymentStatus 
+  PaymentStatus,
+  PaymentMethod
 } from '../interfaces/payment.interfaces';
 
 export interface PaystackConfig {
@@ -17,12 +18,10 @@ export interface PaystackConfig {
 export class PaystackGateway implements PaymentGateway {
   public readonly name = 'paystack';
   private secretKey: string;
-  private publicKey: string;
   private baseUrl: string;
 
   constructor(config: PaystackConfig) {
-    this.secretKey = config.secretKey || process.env.PAYSTACK_SECRET_KEY || '';
-    this.publicKey = config.publicKey || process.env.PAYSTACK_PUBLIC_KEY || '';
+    this.secretKey = config.secretKey || process.env['PAYSTACK_SECRET_KEY'] || '';
     this.baseUrl = config.baseUrl || 'https://api.paystack.co';
   }
 
@@ -61,8 +60,8 @@ export class PaystackGateway implements PaymentGateway {
         authorizationUrl: data.authorization_url,
         createdAt: new Date()
       };
-    } catch (error) {
-      throw new Error(`Paystack error: ${error.response?.data?.message || error.message}`);
+    } catch (error: any) {
+      throw new Error(`Paystack error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -102,8 +101,8 @@ export class PaystackGateway implements PaymentGateway {
         ussdCode: data.display_text,
         createdAt: new Date()
       };
-    } catch (error) {
-      throw new Error(`Mobile money error: ${error.response?.data?.message || error.message}`);
+    } catch (error: any) {
+      throw new Error(`Mobile money error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -120,24 +119,29 @@ export class PaystackGateway implements PaymentGateway {
 
       const { data } = response.data;
 
-      return {
+      const payment: Payment = {
         id: data.id,
         amount: data.amount / 100,
         currency: data.currency,
         customerId: data.metadata.customerId,
         orderId: data.metadata.orderId,
         status: this.mapStatus(data.status),
-        paymentMethod: 'CARD' as any,
+        paymentMethod: PaymentMethod.CARD,
         gateway: 'paystack',
         reference: data.reference,
         authorizationCode: data.authorization?.authorization_code,
         metadata: data.metadata,
         createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.created_at),
-        completedAt: data.paid_at ? new Date(data.paid_at) : undefined
+        updatedAt: new Date(data.created_at)
       };
-    } catch (error) {
-      throw new Error(`Verification error: ${error.response?.data?.message || error.message}`);
+
+      if (data.paid_at) {
+        payment.completedAt = new Date(data.paid_at);
+      }
+
+      return payment;
+    } catch (error: any) {
+      throw new Error(`Verification error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -169,8 +173,8 @@ export class PaystackGateway implements PaymentGateway {
         status: data.status,
         createdAt: new Date(data.created_at)
       };
-    } catch (error) {
-      throw new Error(`Refund error: ${error.response?.data?.message || error.message}`);
+    } catch (error: any) {
+      throw new Error(`Refund error: ${error.response?.data?.message || error.message || 'Unknown error'}`);
     }
   }
 
@@ -197,8 +201,8 @@ export class PaystackGateway implements PaymentGateway {
         currency: transaction.currency,
         createdAt: transaction.created_at
       }));
-    } catch (error) {
-      throw new Error(`Failed to fetch transactions: ${error.message}`);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch transactions: ${error.message || 'Unknown error'}`);
     }
   }
 
